@@ -16,6 +16,7 @@ const state = {
   useGap: true,
   showGrid: true,
   hudHidden: false,
+  settingsOpen: false,
 };
 
 const elWelcome = document.getElementById("welcome");
@@ -23,9 +24,9 @@ const elHud = document.getElementById("hud");
 const elToast = document.getElementById("toast");
 const elBeatDot = document.getElementById("beat-dot");
 const elSource = document.getElementById("stat-source");
-const elBpm = document.getElementById("stat-bpm");
-const elDb = document.getElementById("stat-db");
+const elTelemetry = document.getElementById("stat-telemetry");
 const elFps = document.getElementById("stat-fps");
+const elPopover = document.getElementById("popover-settings");
 const selMode = document.getElementById("sel-mode");
 const selTheme = document.getElementById("sel-theme");
 const selSmooth = document.getElementById("sel-smooth");
@@ -39,21 +40,50 @@ const btnMuteDemo = document.getElementById("btn-mute-demo");
 const btnAgc = document.getElementById("btn-autogain");
 const btnPeaks = document.getElementById("btn-peaks");
 const btnGrid = document.getElementById("btn-grid");
+const btnSettings = document.getElementById("btn-settings");
 
 let toastTimer = null;
-function showToast(msg, ms = 2200) {
+let idleTimer = null;
+
+function showToast(msg, ms = 2000) {
   elToast.textContent = msg;
   elToast.classList.add("visible");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => elToast.classList.remove("visible"), ms);
 }
 
+function resetIdleFade() {
+  elHud.classList.remove("idle");
+  clearTimeout(idleTimer);
+  if (audio.sourceType !== "none" && !state.settingsOpen) {
+    idleTimer = setTimeout(() => {
+      if (audio.sourceType !== "none" && !state.settingsOpen) {
+        elHud.classList.add("idle");
+      }
+    }, 3500);
+  }
+}
+
+function setSettingsOpen(open) {
+  state.settingsOpen = open;
+  elPopover.classList.toggle("open", open);
+  elPopover.setAttribute("aria-hidden", String(!open));
+  btnSettings.classList.toggle("active", open);
+  resetIdleFade();
+}
+
+function setModeIndex(idx) {
+  state.modeIdx = (idx + WEB_MODES.length) % WEB_MODES.length;
+  selMode.value = String(state.modeIdx);
+  showToast(`Mode: ${WEB_MODES[state.modeIdx].label}`);
+}
+
 function applyThemeCss(theme) {
   const chrome = getThemeChrome(theme);
   const root = document.documentElement.style;
   root.setProperty("--bg", rgbCss(chrome.bgRgb));
-  root.setProperty("--surface", rgbCss(chrome.bgRgb, 0.72));
-  root.setProperty("--border", rgbCss(chrome.axisRgb, 0.30));
+  root.setProperty("--surface", rgbCss(chrome.bgRgb, 0.58));
+  root.setProperty("--border", rgbCss(chrome.axisRgb, 0.24));
   root.setProperty("--accent", rgbCss(chrome.accentRgb));
 }
 
@@ -96,6 +126,7 @@ function updateSourceButtons() {
   btnMuteDemo.style.display = audio.sourceType === "demo" ? "inline-block" : "none";
   if (audio.sourceType !== "none") elWelcome.classList.add("hidden");
   elSource.textContent = audio.sourceLabel;
+  resetIdleFade();
 }
 
 async function handleSpeaker() {
@@ -173,10 +204,10 @@ window.addEventListener("drop", (e) => {
   if (file) handleFile(file);
 });
 
-selMode.onchange = () => {
-  state.modeIdx = Number(selMode.value);
-  showToast(`Mode: ${WEB_MODES[state.modeIdx].label}`);
-};
+document.getElementById("btn-mode-prev").onclick = () => setModeIndex(state.modeIdx - 1);
+document.getElementById("btn-mode-next").onclick = () => setModeIndex(state.modeIdx + 1);
+selMode.onchange = () => setModeIndex(Number(selMode.value));
+
 selTheme.onchange = () => {
   state.theme = selTheme.value;
   applyThemeCss(state.theme);
@@ -200,8 +231,21 @@ btnGrid.onclick = () => {
   state.showGrid = !state.showGrid;
   btnGrid.classList.toggle("active", state.showGrid);
 };
+
+btnSettings.onclick = (e) => {
+  e.stopPropagation();
+  setSettingsOpen(!state.settingsOpen);
+};
+
+document.addEventListener("click", (e) => {
+  if (state.settingsOpen && !elPopover.contains(e.target) && e.target !== btnSettings) {
+    setSettingsOpen(false);
+  }
+});
+
 document.getElementById("btn-hud").onclick = () => {
   state.hudHidden = !state.hudHidden;
+  if (state.hudHidden) setSettingsOpen(false);
   elHud.classList.toggle("hidden", state.hudHidden);
 };
 document.getElementById("btn-fs").onclick = () => {
@@ -209,21 +253,23 @@ document.getElementById("btn-fs").onclick = () => {
   else document.exitFullscreen?.();
 };
 
+window.addEventListener("mousemove", resetIdleFade);
+window.addEventListener("touchstart", resetIdleFade);
+
 window.addEventListener("keydown", (e) => {
+  resetIdleFade();
+  if (e.key === "Escape" && state.settingsOpen) {
+    setSettingsOpen(false);
+    return;
+  }
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
   if (e.key === " " || e.key === "m" || e.key === "ArrowRight") {
     e.preventDefault();
-    state.modeIdx = (state.modeIdx + 1) % WEB_MODES.length;
-    selMode.value = String(state.modeIdx);
-    showToast(`Mode: ${WEB_MODES[state.modeIdx].label}`);
+    setModeIndex(state.modeIdx + 1);
   } else if (e.key === "ArrowLeft") {
-    state.modeIdx = (state.modeIdx - 1 + WEB_MODES.length) % WEB_MODES.length;
-    selMode.value = String(state.modeIdx);
-    showToast(`Mode: ${WEB_MODES[state.modeIdx].label}`);
+    setModeIndex(state.modeIdx - 1);
   } else if (/^[1-9]$/.test(e.key) && Number(e.key) - 1 < WEB_MODES.length) {
-    state.modeIdx = Number(e.key) - 1;
-    selMode.value = String(state.modeIdx);
-    showToast(`Mode: ${WEB_MODES[state.modeIdx].label}`);
+    setModeIndex(Number(e.key) - 1);
   } else if (e.key === "c" || e.key === "C") {
     const dir = e.key === "C" ? -1 : 1;
     const ti = (THEMES.indexOf(state.theme) + dir + THEMES.length) % THEMES.length;
@@ -233,6 +279,7 @@ window.addEventListener("keydown", (e) => {
     showToast(`Theme: ${state.theme}`);
   } else if (e.key === "h" || e.key === "H") {
     state.hudHidden = !state.hudHidden;
+    if (state.hudHidden) setSettingsOpen(false);
     elHud.classList.toggle("hidden", state.hudHidden);
     showToast(state.hudHidden ? "HUD hidden (press H to show)" : "HUD visible", 1600);
   } else if (e.key === "f" || e.key === "F") {
@@ -259,8 +306,8 @@ function tick(nowMs) {
   renderer.render(mode, audio, state, dt);
 
   elBeatDot.classList.toggle("active", audio.beatFlash > 0.35);
-  elBpm.textContent = audio.bpm > 0 ? `${Math.round(audio.bpm)} BPM` : "-- BPM";
-  elDb.textContent = `${audio.db.toFixed(1)} dB`;
+  const bpmStr = audio.bpm > 0 ? `${Math.round(audio.bpm)} BPM` : "-- BPM";
+  elTelemetry.textContent = `${bpmStr} · ${audio.db.toFixed(0)} dB`;
   elFps.textContent = `${Math.round(fpsEma)} fps`;
   requestAnimationFrame(tick);
 }

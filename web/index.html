@@ -3,82 +3,111 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Aesthetic Audio Visualizer</title>
+  <title>Music Visualiser — Pradyumna Kumar Sahoo</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <canvas id="viz-canvas"></canvas>
 
   <div id="welcome" class="welcome">
-    <h1>Speaker &amp; Live Audio Visualizer</h1>
+    <div class="welcome-badge">Live Web Audio Visualiser</div>
+    <h1>Music Visualiser</h1>
     <p>
-      Visualize live speaker/tab audio directly in your browser using perceptual
-      OKLab color harmony, cymatics physics, radial auras, and smooth HiDPI rendering.
+      Real-time speaker &amp; tab visualizer with perceptual OKLab color harmony,
+      cymatics physics, radial auras, and HiDPI rendering.
     </p>
     <div class="actions">
-      <button id="btn-welcome-speaker" class="primary">Capture Speaker / Tab Audio</button>
-      <button id="btn-welcome-mic">Use Mic / Loopback</button>
-      <button id="btn-welcome-demo">Play 126 BPM Synth</button>
+      <button id="btn-welcome-speaker" class="primary">Capture Speaker / Tab</button>
+      <button id="btn-welcome-mic">Mic / Loopback</button>
+      <button id="btn-welcome-demo">126 BPM Demo</button>
     </div>
     <p class="hint">
-      Tip: In the share popup, pick your music tab or screen and enable <strong>Share audio</strong>.
-      Or drop any audio file onto the canvas.
+      Pick your music tab or screen and enable <strong>Share audio</strong>, or drop any audio file onto the canvas.
     </p>
+    <div class="welcome-footer">
+      Built by <a href="https://prady029.github.io" target="_blank" rel="noopener noreferrer">Pradyumna Kumar Sahoo</a>
+      <span>·</span>
+      <a href="https://github.com/Prady029/Music_Visualiser" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </div>
   </div>
 
   <div id="toast" class="toast"></div>
 
   <div id="hud" class="hud">
-    <div class="bar top-bar">
+    <header class="dock top-dock">
       <div class="group">
-        <div class="brand">
+        <div class="brand" title="Music Visualiser">
           <span id="beat-dot" class="beat-dot"></span>
           <span>MUSVIZ</span>
         </div>
-        <button id="btn-speaker" class="primary" title="Capture system or browser tab speaker output">Capture Speaker</button>
-        <button id="btn-mic" title="Capture microphone or BlackHole virtual loopback">Mic / Input</button>
-        <select id="sel-input" title="Audio input device"></select>
-        <button id="btn-demo" title="Start built-in 126 BPM Web Audio synth">Demo Synth</button>
-        <button id="btn-mute-demo" style="display:none" title="Mute/Unmute demo synth audio">🔊</button>
-        <label class="file-btn" title="Open an MP3, WAV, FLAC, or M4A file">
-          Open File
-          <input id="file-input" type="file" accept="audio/*" />
-        </label>
+        <div class="divider"></div>
+        <div class="segmented" role="group" aria-label="Audio source">
+          <button id="btn-speaker" class="primary" title="Capture system or browser tab speaker output">Speaker</button>
+          <button id="btn-mic" title="Capture microphone or virtual loopback device">Mic</button>
+          <button id="btn-demo" title="Start built-in 126 BPM Web Audio synth">Demo</button>
+          <button id="btn-mute-demo" class="icon-btn" style="display:none" title="Mute / Unmute demo synth">🔊</button>
+          <label class="file-btn" title="Open an MP3, WAV, FLAC, or M4A file">
+            File
+            <input id="file-input" type="file" accept="audio/*" />
+          </label>
+        </div>
       </div>
-      <div class="group">
-        <span id="stat-source" class="pill">Idle</span>
-        <span id="stat-bpm" class="pill">-- BPM</span>
-        <span id="stat-db" class="pill">-60.0 dB</span>
-        <span id="stat-fps" class="pill">60 fps</span>
-      </div>
-    </div>
 
-    <div class="bar bottom-bar">
       <div class="group">
-        <label class="slider-wrap">Mode <select id="sel-mode"></select></label>
-        <label class="slider-wrap">Theme <select id="sel-theme"></select></label>
-        <label class="slider-wrap">Smooth
+        <span id="stat-source" class="pill source-pill">Idle</span>
+        <span id="stat-telemetry" class="pill">-- BPM · -60 dB</span>
+        <a class="profile-link" href="https://prady029.github.io" target="_blank" rel="noopener noreferrer" title="Pradyumna Kumar Sahoo — Portfolio">Prady029 ↗</a>
+      </div>
+    </header>
+
+    <div class="bottom-wrap">
+      <div id="popover-settings" class="popover" aria-hidden="true">
+        <div class="popover-row">
+          <label for="sel-input">Input Device</label>
+          <select id="sel-input" title="Audio input device"></select>
+        </div>
+        <div class="popover-row">
+          <label for="sel-smooth">Smoothing</label>
           <select id="sel-smooth">
             <option value="snappy">Snappy</option>
             <option value="smooth" selected>Smooth</option>
             <option value="silky">Silky</option>
             <option value="liquid">Liquid</option>
           </select>
-        </label>
+        </div>
+        <div class="popover-row">
+          <label for="rng-gain">Gain <span id="lbl-gain" class="mono">1.0x</span></label>
+          <input id="rng-gain" type="range" min="0.2" max="5" step="0.05" value="1" />
+        </div>
+        <div class="popover-toggles">
+          <button id="btn-autogain" class="active">AGC</button>
+          <button id="btn-peaks" class="active">Peaks</button>
+          <button id="btn-grid" class="active">Grid</button>
+        </div>
+        <div class="popover-meta">
+          <span id="stat-fps" class="mono">60 fps</span>
+          <span>Space: Mode · C: Theme · H: HUD · F: Fullscreen</span>
+        </div>
       </div>
 
-      <div class="group">
-        <label class="slider-wrap">
-          Gain
-          <input id="rng-gain" type="range" min="0.2" max="5" step="0.05" value="1" />
-          <span id="lbl-gain">1.0x</span>
-        </label>
-        <button id="btn-autogain" class="active">AGC</button>
-        <button id="btn-peaks" class="active">Peaks</button>
-        <button id="btn-grid" class="active">Grid</button>
-        <button id="btn-hud" title="Hide controls (Press H to toggle back)">Hide HUD (H)</button>
-        <button id="btn-fs" title="Fullscreen (F)">Fullscreen</button>
-      </div>
+      <footer class="dock bottom-dock">
+        <div class="group">
+          <div class="stepper">
+            <button id="btn-mode-prev" class="icon-btn" title="Previous mode (Left Arrow)">‹</button>
+            <select id="sel-mode" aria-label="Visual mode"></select>
+            <button id="btn-mode-next" class="icon-btn" title="Next mode (Space / Right Arrow)">›</button>
+          </div>
+          <select id="sel-theme" aria-label="Color theme" title="Color theme (C / Shift+C)"></select>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="group">
+          <button id="btn-settings" title="Audio &amp; visual settings">⚙</button>
+          <button id="btn-hud" title="Hide controls (H)">Hide</button>
+          <button id="btn-fs" title="Fullscreen (F)">⛶</button>
+        </div>
+      </footer>
     </div>
   </div>
 
