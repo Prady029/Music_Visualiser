@@ -8,6 +8,8 @@ An in-browser and terminal live audio visualizer powered by perceptual OKLab/OKL
 
 Built for a house-party vibe-coding competition — the goal was to put live party speaker/tab music straight onto a big screen in the browser with zero setup, reactive physics, and aesthetic color palettes. This in-browser visualizer took first place.
 
+Created by **Pradyumna Kumar Sahoo** ([Portfolio](https://prady029.github.io) · [GitHub](https://github.com/Prady029)).
+
 ## Web Visualizer (`webapp` branch / `web/`)
 
 Runs directly in the browser with no build step:
