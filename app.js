@@ -148,12 +148,18 @@ function adaptForMobile() {
     const btnWelcomeMic = document.getElementById("btn-welcome-mic");
     const btnWelcomeSpk = document.getElementById("btn-welcome-speaker");
     const elWelcomeHint = document.getElementById("welcome-hint");
-    if (btnWelcomeMic && btnWelcomeSpk) {
+    if (btnWelcomeSpk) {
+      btnWelcomeSpk.style.display = "none";
+    }
+    if (btnSpeaker) {
+      btnSpeaker.style.display = "none";
+    }
+    if (btnMic) {
+      btnMic.classList.add("primary");
+    }
+    if (btnWelcomeMic) {
       btnWelcomeMic.classList.add("primary");
       btnWelcomeMic.textContent = "Live Mic (Listen)";
-      btnWelcomeSpk.classList.remove("primary");
-      btnWelcomeSpk.textContent = "Speaker (Desktop)";
-      btnWelcomeSpk.title = "Internal speaker capture requires a desktop browser";
     }
     if (elWelcomeHint) {
       elWelcomeHint.innerHTML = "Mobile browsers cannot capture internal speaker output directly. Use <strong>Live Mic</strong> to listen to music from speakers or room, pick an <strong>Audio File</strong>, or try the <strong>Demo</strong>!";
