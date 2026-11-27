@@ -15,6 +15,11 @@ const state = {
   showPeaks: true,
   useGap: true,
   showGrid: true,
+  fxBloom: true,
+  fxTrails: false,
+  fxKaleidoscope: false,
+  fxRgbShift: false,
+  fxCrt: false,
   hudHidden: false,
   settingsOpen: false,
 };
@@ -40,6 +45,11 @@ const btnMuteDemo = document.getElementById("btn-mute-demo");
 const btnAgc = document.getElementById("btn-autogain");
 const btnPeaks = document.getElementById("btn-peaks");
 const btnGrid = document.getElementById("btn-grid");
+const btnFxBloom = document.getElementById("btn-fx-bloom");
+const btnFxTrails = document.getElementById("btn-fx-trails");
+const btnFxKaleido = document.getElementById("btn-fx-kaleido");
+const btnFxRgb = document.getElementById("btn-fx-rgb");
+const btnFxCrt = document.getElementById("btn-fx-crt");
 const btnSettings = document.getElementById("btn-settings");
 
 let toastTimer = null;
@@ -129,7 +139,34 @@ function updateSourceButtons() {
   resetIdleFade();
 }
 
+const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+  (navigator.maxTouchPoints > 1 && window.innerWidth <= 1024);
+const canDisplayMedia = Boolean(navigator.mediaDevices?.getDisplayMedia && !isMobile);
+
+function adaptForMobile() {
+  if (isMobile || !canDisplayMedia) {
+    const btnWelcomeMic = document.getElementById("btn-welcome-mic");
+    const btnWelcomeSpk = document.getElementById("btn-welcome-speaker");
+    const elWelcomeHint = document.getElementById("welcome-hint");
+    if (btnWelcomeMic && btnWelcomeSpk) {
+      btnWelcomeMic.classList.add("primary");
+      btnWelcomeMic.textContent = "Live Mic (Listen)";
+      btnWelcomeSpk.classList.remove("primary");
+      btnWelcomeSpk.textContent = "Speaker (Desktop)";
+      btnWelcomeSpk.title = "Internal speaker capture requires a desktop browser";
+    }
+    if (elWelcomeHint) {
+      elWelcomeHint.innerHTML = "Mobile browsers cannot capture internal speaker output directly. Use <strong>Live Mic</strong> to listen to music from speakers or room, pick an <strong>Audio File</strong>, or try the <strong>Demo</strong>!";
+    }
+  }
+}
+
 async function handleSpeaker() {
+  if (isMobile || !navigator.mediaDevices?.getDisplayMedia) {
+    showToast("Mobile OSes don't support internal speaker capture — switched to Mic to listen!", 3800);
+    await handleMic();
+    return;
+  }
   try {
     await audio.startSpeakerCapture();
     updateSourceButtons();
@@ -196,6 +233,10 @@ selInput.onchange = () => {
 };
 
 document.getElementById("file-input").onchange = (e) => handleFile(e.target.files?.[0]);
+const welcomeFileInput = document.getElementById("welcome-file-input");
+if (welcomeFileInput) {
+  welcomeFileInput.onchange = (e) => handleFile(e.target.files?.[0]);
+}
 
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => {
@@ -231,6 +272,18 @@ btnGrid.onclick = () => {
   state.showGrid = !state.showGrid;
   btnGrid.classList.toggle("active", state.showGrid);
 };
+
+function toggleFx(key, btn, label) {
+  state[key] = !state[key];
+  btn?.classList.toggle("active", state[key]);
+  showToast(`${label}: ${state[key] ? "ON" : "OFF"}`);
+}
+
+btnFxBloom.onclick = () => toggleFx("fxBloom", btnFxBloom, "Bloom");
+btnFxTrails.onclick = () => toggleFx("fxTrails", btnFxTrails, "Feedback Trails");
+btnFxKaleido.onclick = () => toggleFx("fxKaleidoscope", btnFxKaleido, "Kaleidoscope");
+btnFxRgb.onclick = () => toggleFx("fxRgbShift", btnFxRgb, "RGB Shift");
+btnFxCrt.onclick = () => toggleFx("fxCrt", btnFxCrt, "CRT Scanlines");
 
 btnSettings.onclick = (e) => {
   e.stopPropagation();
@@ -282,12 +335,66 @@ window.addEventListener("keydown", (e) => {
     if (state.hudHidden) setSettingsOpen(false);
     elHud.classList.toggle("hidden", state.hudHidden);
     showToast(state.hudHidden ? "HUD hidden (press H to show)" : "HUD visible", 1600);
+  } else if (e.key === "b" || e.key === "B") {
+    toggleFx("fxBloom", btnFxBloom, "Bloom");
+  } else if (e.key === "t" || e.key === "T") {
+    toggleFx("fxTrails", btnFxTrails, "Feedback Trails");
+  } else if (e.key === "k" || e.key === "K") {
+    toggleFx("fxKaleidoscope", btnFxKaleido, "Kaleidoscope");
+  } else if (e.key === "r" || e.key === "R") {
+    toggleFx("fxRgbShift", btnFxRgb, "RGB Shift");
+  } else if (e.key === "x" || e.key === "X") {
+    toggleFx("fxCrt", btnFxCrt, "CRT Scanlines");
   } else if (e.key === "f" || e.key === "F") {
     document.getElementById("btn-fs").click();
   }
 });
 
 window.addEventListener("resize", () => renderer.resize());
+
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartTime = 0;
+
+window.addEventListener("touchstart", () => audio.resumeContext(), { passive: true, once: true });
+
+canvas.addEventListener("touchstart", (e) => {
+  resetIdleFade();
+  audio.resumeContext();
+  if (e.touches.length === 1) {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchStartTime = performance.now();
+  }
+}, { passive: true });
+
+canvas.addEventListener("touchend", (e) => {
+  if (e.changedTouches.length === 1) {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    const dt = performance.now() - touchStartTime;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < 18 && dt < 350) {
+      if (!elWelcome.classList.contains("hidden")) return;
+      state.hudHidden = !state.hudHidden;
+      if (state.hudHidden) setSettingsOpen(false);
+      elHud.classList.toggle("hidden", state.hudHidden);
+      showToast(state.hudHidden ? "HUD hidden (tap to show)" : "HUD visible", 1500);
+      return;
+    }
+
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.4 && dt < 600) {
+      if (dx < 0) {
+        setModeIndex(state.modeIdx + 1);
+      } else {
+        setModeIndex(state.modeIdx - 1);
+      }
+    }
+  }
+}, { passive: true });
+
+adaptForMobile();
 populateSelects();
 refreshDevices();
 renderer.resize();

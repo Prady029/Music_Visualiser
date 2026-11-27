@@ -101,6 +101,12 @@ export class AudioEngine {
     return Promise.resolve();
   }
 
+  resumeContext() {
+    if (this.ctx && this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {});
+    }
+  }
+
   stop() {
     if (this.demoTimer) {
       clearInterval(this.demoTimer);
@@ -132,8 +138,13 @@ export class AudioEngine {
   }
 
   async startSpeakerCapture() {
-    if (!navigator.mediaDevices?.getDisplayMedia) {
-      throw new Error("Screen/Speaker capture (getDisplayMedia) is not supported in this browser. Try Chrome or Edge on localhost.");
+    const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      (navigator.maxTouchPoints > 1 && window.innerWidth <= 1024);
+    if (!navigator.mediaDevices?.getDisplayMedia || isMobile) {
+      if (isMobile) {
+        throw new Error("Mobile operating systems (iOS & Android) do not allow web browsers to capture internal speaker output. Use Mic or choose an Audio File.");
+      }
+      throw new Error("Screen/Speaker capture (getDisplayMedia) is not supported in this browser. Try desktop Chrome, Edge, or Brave.");
     }
     await this._ensureContext();
 

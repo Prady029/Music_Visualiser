@@ -1,6 +1,6 @@
 # Music Visualiser
 
-An in-browser and terminal live audio visualizer powered by perceptual OKLab/OKLCH color harmony, 14 HiDPI Canvas 2D modes, and 29 themes.
+An in-browser and terminal live audio visualizer powered by perceptual OKLab/OKLCH color harmony, 18 HiDPI Canvas 2D modes, vizz.fm effects stack, and 29 themes.
 
 **Live Web App:** https://prady029.github.io/Music_Visualiser/
 
@@ -18,7 +18,13 @@ Runs directly in the browser with no build step:
 - **Mic / Virtual Loopback** (`Mic / Input`) — Captures microphone or loopback audio (such as BlackHole) via `getUserMedia`.
 - **Audio Files & Drag-and-Drop** — Open or drop any local audio file onto the canvas.
 - **Built-in 126 BPM Demo Synth** — Instant preview with a mute toggle (`🔊`).
-- **14 Visual Modes & 29 OKLab/OKLCH Themes** — Includes spectrum, mirror, curve, radial, hybrid, cymatics, faraday, vortex, horizon, starfield, wave, lissajous, stereo, and spectrogram modes, plus `Snappy` / `Smooth` / `Silky` / `Liquid` smoothing and AGC.
+- **18 Visual Modes & 29 OKLab/OKLCH Themes** — Includes Audio Tunnel (vizz.fm), Mesh Grid (vizz.fm), Particle Nebula (vizz.fm), Plasma Orb (vizz.fm), spectrum, mirror, curve, radial, hybrid, cymatics, faraday, vortex, horizon, starfield, wave, lissajous, stereo, and spectrogram modes.
+- **vizz.fm Effect Stack** — Stackable real-time post-processing effects:
+  - **Bloom (`B`)**: Glowing neon radiance reacting to audio beat spikes.
+  - **Feedback Trails (`T`)**: Motion blur and hall-of-mirrors zoom decay.
+  - **Kaleidoscope (`K`)**: Symmetrical 8-fold radial kaleidoscope mandala mirror.
+  - **RGB Shift (`R`)**: Bass-reactive chromatic aberration and color fringe glitch.
+  - **CRT (`X`)**: Retro phosphor scanlines and corner vignette.
 
 ### Run Locally
 

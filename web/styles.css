@@ -235,7 +235,7 @@ select option {
   opacity: 0;
   transform: translateY(8px) scale(0.98);
   transition: opacity 0.18s ease, transform 0.18s ease;
-  width: min(320px, calc(100vw - 28px));
+  width: min(330px, calc(100vw - 28px));
   padding: 14px;
   border-radius: 16px;
   background: rgba(11, 17, 27, 0.88);
@@ -272,6 +272,25 @@ select option {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
+}
+
+.popover-row-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.popover-toggles.fx-toggles {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.popover-toggles.fx-toggles button {
+  font-size: 11px;
+  padding: 6px 4px;
 }
 
 .popover-meta {
@@ -349,6 +368,12 @@ input[type="range"] {
   flex-wrap: wrap;
 }
 
+.welcome-file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .welcome .hint {
   margin-top: 14px;
   margin-bottom: 0;
@@ -372,7 +397,9 @@ input[type="range"] {
   top: 66px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 6px 14px;
+  padding: 8px 16px;
+  max-width: min(420px, calc(100vw - 32px));
+  text-align: center;
   border-radius: 999px;
   background: var(--surface);
   border: 1px solid var(--accent);
@@ -396,5 +423,35 @@ input[type="range"] {
   }
   .dock {
     border-radius: 16px;
+    padding: 6px 10px;
+    gap: 6px;
+    width: calc(100% - 16px);
+  }
+  .welcome {
+    padding: 22px 18px 18px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+  }
+  .welcome .actions {
+    gap: 8px;
+  }
+  .welcome .actions button,
+  .welcome .actions label {
+    flex: 1 1 calc(50% - 6px);
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+  .popover {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 110px);
+    overflow-y: auto;
+  }
+  .segmented button {
+    padding: 6px 7px;
+    font-size: 11px;
+  }
+  .stepper select {
+    max-width: 125px;
+    font-size: 12px;
   }
 }
