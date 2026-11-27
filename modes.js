@@ -7,6 +7,10 @@ import { getThemeChrome, getThemeLut, rgbCss } from "./themes.js";
 export const WEB_MODES = [
   { id: "spectrum",    label: "Spectrum" },
   { id: "mirror",      label: "Mirror" },
+  { id: "tunnel",      label: "Audio Tunnel" },
+  { id: "mesh",        label: "Mesh Grid" },
+  { id: "nebula",      label: "Particle Nebula" },
+  { id: "orb",         label: "Plasma Orb" },
   { id: "curve",       label: "Aura Curve" },
   { id: "radial",      label: "Radial" },
   { id: "hybrid",      label: "Hybrid Burst" },
@@ -290,6 +294,48 @@ export class VisualizerRenderer {
     this.specCanvas.width = 480;
     this.specCanvas.height = 180;
     this.specCtx = this.specCanvas.getContext("2d");
+
+    // vizz.fm inspired 3D Audio Tunnel
+    this.tunnelRings = Array.from({ length: 28 }, (_, i) => ({
+      z: 0.1 + (i / 28) * 2.9,
+      rot: (i / 28) * Math.PI,
+    }));
+    this.tunnelRot = 0;
+
+    // vizz.fm inspired 3D Mesh Grid (Displaced Terrain)
+    this.meshRows = 24;
+    this.meshCols = 32;
+    this.meshGrid = new Float32Array(this.meshRows * this.meshCols);
+    this.meshScrollFrac = 0;
+
+    // vizz.fm inspired 3D Particle Nebula / Cosmic Cyclone
+    this.nebulaCount = 1200;
+    this.nebula = Array.from({ length: this.nebulaCount }, () => {
+      const theta = Math.random() * Math.PI * 2;
+      const baseR = 0.15 + Math.random() * 0.85;
+      return {
+        theta,
+        baseR,
+        r: baseR,
+        vr: 0,
+        y: (Math.random() * 2 - 1) * 0.45,
+        spd: 0.4 + Math.random() * 0.9,
+        size: 1.0 + Math.random() * 2.2,
+        phase: Math.random() * Math.PI * 2,
+      };
+    });
+
+    // vizz.fm inspired 3D Plasma Orb
+    this.orbRotX = 0.3;
+    this.orbRotY = 0.2;
+
+    // vizz.fm post-processing offscreen buffers
+    this.fxCanvas = document.createElement("canvas");
+    this.fxCtx = this.fxCanvas.getContext("2d");
+    this.trailCanvas = document.createElement("canvas");
+    this.trailCtx = this.trailCanvas.getContext("2d");
+    this.bloomCanvas = document.createElement("canvas");
+    this.bloomCtx = this.bloomCanvas.getContext("2d");
   }
 
   resize() {
@@ -301,6 +347,13 @@ export class VisualizerRenderer {
     this.canvas.width = this.w;
     this.canvas.height = this.h;
     this.chladni.setAspect(this.w, this.h);
+
+    this.fxCanvas.width = this.w;
+    this.fxCanvas.height = this.h;
+    this.trailCanvas.width = this.w;
+    this.trailCanvas.height = this.h;
+    this.bloomCanvas.width = Math.max(160, Math.floor(this.w / 4));
+    this.bloomCanvas.height = Math.max(90, Math.floor(this.h / 4));
   }
 
   render(modeId, audio, state, dt) {
@@ -325,9 +378,23 @@ export class VisualizerRenderer {
       Math.min(255, chrome.bgRgb[2] + 14),
     ]));
     bgGrad.addColorStop(1, bgCss);
-    ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, w, h);
+
+    if (state.fxTrails) {
+      // Zoom feedback blur trail (vizz.fm)
+      const zoom = 1.008;
+      const zw = w * zoom, zh = h * zoom;
+      ctx.save();
+      ctx.globalAlpha = 0.82;
+      ctx.drawImage(this.trailCanvas, (w - zw) * 0.5, (h - zh) * 0.5, zw, zh);
+      ctx.restore();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = rgbCss(chrome.bgRgb, 0.24);
+      ctx.fillRect(0, 0, w, h);
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, w, h);
+    }
 
     if (showGrid && ["spectrum", "stereo", "wave", "lissajous"].includes(modeId)) {
       ctx.strokeStyle = rgbCss(chrome.gridRgb, 0.42);
@@ -345,6 +412,14 @@ export class VisualizerRenderer {
 
     if (modeId === "spectrum" || modeId === "mirror") {
       this._renderBars(audio.smooth, audio.peaks, lut, chrome, modeId === "mirror", showPeaks, useGap, showGrid, audio._binBounds);
+    } else if (modeId === "tunnel") {
+      this._renderTunnel(audio, dt, lut, chrome);
+    } else if (modeId === "mesh") {
+      this._renderMeshGrid(audio, dt, lut, chrome);
+    } else if (modeId === "nebula") {
+      this._renderNebula(audio, dt, lut, chrome);
+    } else if (modeId === "orb") {
+      this._renderOrb(audio, dt, lut, chrome);
     } else if (modeId === "stereo") {
       this._renderStereo(audio.smoothL, audio.peaksL, audio.smoothR, audio.peaksR, lut, chrome, showPeaks, useGap);
     } else if (modeId === "curve") {
@@ -400,6 +475,23 @@ export class VisualizerRenderer {
     } else if (modeId === "spectrogram") {
       if (histTicks > 0) this._pushSpectrogram(audio.smooth, lut);
       ctx.drawImage(this.specCanvas, 0, 0, w, h);
+    }
+
+    // vizz.fm post-processing pipeline
+    if (state.fxTrails) {
+      this.trailCtx.drawImage(this.canvas, 0, 0);
+    }
+    if (state.fxKaleidoscope) {
+      this._applyKaleidoscope(w, h);
+    }
+    if (state.fxBloom) {
+      this._applyBloom(w, h, audio.beatFlash, chrome);
+    }
+    if (state.fxRgbShift) {
+      this._applyRgbShift(w, h, audio.beatFlash, dpr);
+    }
+    if (state.fxCrt) {
+      this._applyCrt(w, h, dpr);
     }
   }
 
@@ -817,6 +909,437 @@ export class VisualizerRenderer {
       }
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  _renderTunnel(audio, dt, lut, chrome) {
+    const ctx = this.ctx;
+    const { w, h, dpr } = this;
+    const cx = w * 0.5, cy = h * 0.5;
+    const bass = meanSlice(audio.smooth, 0, Math.max(1, Math.floor(audio.smooth.length / 6)));
+    const energy = meanSlice(audio.smooth, 0, audio.smooth.length);
+    const speed = (0.65 + 1.8 * Math.min(1.5, bass) + 2.4 * audio.beatFlash);
+    this.tunnelRot = (this.tunnelRot + dt * (0.35 + 0.55 * bass)) % (Math.PI * 2);
+
+    const sides = 8;
+    const maxZ = 3.0;
+    const rings = this.tunnelRings;
+
+    // Advance rings forward along Z
+    for (const r of rings) {
+      r.z -= speed * dt;
+      if (r.z <= 0.08) {
+        r.z += maxZ - 0.08;
+        r.rot = Math.random() * Math.PI;
+      }
+    }
+
+    // Sort far to near for correct wireframe drawing
+    rings.sort((a, b) => b.z - a.z);
+
+    const ringPolys = [];
+    const nSmooth = audio.smooth.length;
+    for (const r of rings) {
+      const z = r.z;
+      const s = 1 / z;
+      const baseR = Math.min(cx, cy) * 0.38 * s;
+      const twist = this.tunnelRot + (z * 0.7);
+      const verts = [];
+      for (let k = 0; k < sides; k++) {
+        const ang = r.rot + (k / sides) * Math.PI * 2 + twist;
+        const bIdx = Math.floor((k / sides) * (nSmooth - 1));
+        const freqMod = 1.0 + 0.42 * (audio.smooth[bIdx] || 0) + (k % 2 === 0 ? 0.15 * bass : 0);
+        const vx = cx + Math.cos(ang) * baseR * freqMod;
+        const vy = cy + Math.sin(ang) * baseR * freqMod;
+        verts.push([vx, vy]);
+      }
+      ringPolys.push({ z, s, verts });
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    // Longitudinal connecting ribs
+    for (let i = 0; i < ringPolys.length - 1; i++) {
+      const rFar = ringPolys[i];
+      const rNear = ringPolys[i + 1];
+      const depthFrac = Math.max(0, Math.min(1, 1 - rNear.z / maxZ));
+      const ribAlpha = 0.22 + 0.45 * depthFrac;
+      ctx.strokeStyle = rgbCss(chrome.accentRgb, ribAlpha);
+      ctx.lineWidth = Math.max(1, rNear.s * 1.3 * dpr);
+      ctx.beginPath();
+      for (let k = 0; k < sides; k++) {
+        ctx.moveTo(rFar.verts[k][0], rFar.verts[k][1]);
+        ctx.lineTo(rNear.verts[k][0], rNear.verts[k][1]);
+      }
+      ctx.stroke();
+    }
+
+    // Polygonal rings
+    const nL = lut.rgbs.length;
+    for (const r of ringPolys) {
+      const depthFrac = Math.max(0, Math.min(1, 1 - r.z / maxZ));
+      const ci = Math.min(nL - 1, Math.floor((depthFrac * 0.85 + audio.beatFlash * 0.25) * (nL - 1)));
+      const rgb = (depthFrac > 0.75 || audio.beatFlash > 0.6) ? chrome.accentRgb : lut.rgbs[ci];
+      ctx.strokeStyle = rgbCss(rgb, 0.35 + 0.65 * depthFrac);
+      ctx.lineWidth = Math.max(1.2 * dpr, r.s * 2.2 * dpr);
+      ctx.beginPath();
+      for (let k = 0; k < sides; k++) {
+        const [vx, vy] = r.verts[k];
+        if (k === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    // Pulsing central portal flare
+    const portalR = Math.max(4, Math.min(cx, cy) * (0.04 + 0.08 * energy + 0.14 * audio.beatFlash));
+    const pGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, portalR);
+    pGrad.addColorStop(0, rgbCss(chrome.accentRgb, 0.95));
+    pGrad.addColorStop(0.4, rgbCss(lut.rgbs[Math.floor(nL * 0.7)], 0.6));
+    pGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = pGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, portalR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  _renderMeshGrid(audio, dt, lut, chrome) {
+    const ctx = this.ctx;
+    const { w, h, dpr } = this;
+    const cx = w * 0.5;
+    const horizonY = h * 0.44;
+    const bass = meanSlice(audio.smooth, 0, Math.max(1, Math.floor(audio.smooth.length / 6)));
+    const rows = this.meshRows;
+    const cols = this.meshCols;
+    const grid = this.meshGrid;
+
+    // Scroll mesh rows forward with audio energy
+    const scrollRate = (3.5 + 8.0 * bass + 7.0 * audio.beatFlash);
+    this.meshScrollFrac += dt * scrollRate;
+    while (this.meshScrollFrac >= 1.0) {
+      this.meshScrollFrac -= 1.0;
+      for (let r = rows - 1; r >= 1; r--) {
+        const toOff = r * cols;
+        const fromOff = (r - 1) * cols;
+        for (let c = 0; c < cols; c++) {
+          grid[toOff + c] = grid[fromOff + c];
+        }
+      }
+      const up = cubicUpsample(audio.smooth, cols, false);
+      for (let c = 0; c < cols; c++) {
+        const edgeEnv = Math.pow(Math.sin((c / (cols - 1)) * Math.PI), 0.65);
+        grid[c] = up[c] * edgeEnv;
+      }
+    }
+
+    ctx.save();
+
+    // Synthwave sun / neon glow at horizon
+    const sunR = Math.min(w, h) * 0.22;
+    const sunGrad = ctx.createRadialGradient(cx, horizonY - sunR * 0.2, 0, cx, horizonY - sunR * 0.2, sunR);
+    sunGrad.addColorStop(0, rgbCss(chrome.accentRgb, 0.85 + 0.15 * audio.beatFlash));
+    sunGrad.addColorStop(0.6, rgbCss(lut.rgbs[Math.min(lut.rgbs.length - 1, Math.floor(lut.rgbs.length * 0.7))], 0.4));
+    sunGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = sunGrad;
+    ctx.beginPath();
+    ctx.arc(cx, horizonY, sunR, Math.PI, 0, false);
+    ctx.fill();
+
+    // 3D projection of mesh grid points
+    const proj = new Float32Array(rows * cols * 2);
+    const nL = lut.rgbs.length;
+
+    for (let r = 0; r < rows; r++) {
+      const depth = r / (rows - 1);
+      const z = 0.25 + (1 - depth) * 2.8;
+      const s = 1 / z;
+      const rOff = r * cols;
+      for (let c = 0; c < cols; c++) {
+        const xNorm = (c / (cols - 1) - 0.5) * 3.4 * (1 + (1 - depth) * 0.8);
+        const hVal = grid[rOff + c];
+        const yNorm = 0.88 - hVal * (0.85 + 0.65 * bass);
+        const px = cx + xNorm * s * Math.min(w, h) * 1.5;
+        const py = horizonY + yNorm * s * Math.min(w, h) * 1.5;
+        const pIdx = (rOff + c) * 2;
+        proj[pIdx] = px;
+        proj[pIdx + 1] = py;
+      }
+    }
+
+    ctx.globalCompositeOperation = "lighter";
+
+    // Horizontal undulating contour ribbons
+    for (let r = 0; r < rows; r++) {
+      const depth = r / (rows - 1);
+      const ci = Math.min(nL - 1, Math.floor(depth * (nL - 1)));
+      const col = depth > 0.85 ? chrome.accentRgb : lut.rgbs[ci];
+      ctx.strokeStyle = rgbCss(col, 0.25 + 0.75 * depth);
+      ctx.lineWidth = (1.0 + 2.2 * depth) * dpr;
+      ctx.beginPath();
+      const rOff = r * cols * 2;
+      for (let c = 0; c < cols; c++) {
+        const px = proj[rOff + c * 2];
+        const py = proj[rOff + c * 2 + 1];
+        if (c === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+
+    // Vertical perspective grid lines
+    for (let c = 0; c < cols; c += 2) {
+      ctx.strokeStyle = rgbCss(chrome.gridRgb, 0.35);
+      ctx.lineWidth = 1.2 * dpr;
+      ctx.beginPath();
+      for (let r = 0; r < rows; r++) {
+        const pIdx = (r * cols + c) * 2;
+        const px = proj[pIdx];
+        const py = proj[pIdx + 1];
+        if (r === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+
+    // Horizon line
+    ctx.strokeStyle = rgbCss(chrome.accentRgb, 0.85);
+    ctx.lineWidth = 2.0 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(0, horizonY);
+    ctx.lineTo(w, horizonY);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  _renderNebula(audio, dt, lut, chrome) {
+    const ctx = this.ctx;
+    const { w, h, dpr } = this;
+    const cx = w * 0.5, cy = h * 0.5;
+    const bass = meanSlice(audio.smooth, 0, Math.max(1, Math.floor(audio.smooth.length / 6)));
+    const energy = meanSlice(audio.smooth, 0, audio.smooth.length);
+    const spd = (0.55 + 1.4 * bass + 2.0 * audio.beatFlash);
+    const scale = Math.min(cx, cy) * 1.15;
+    const nL = lut.rgbs.length;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    for (const p of this.nebula) {
+      p.theta = (p.theta + p.spd * spd * dt) % (Math.PI * 2);
+
+      if (audio.beatFlash > 0.45) {
+        p.vr += 0.28 * audio.beatFlash;
+      }
+      p.vr = p.vr * Math.exp(-dt * 4.5) - (p.r - p.baseR) * (dt * 3.5);
+      p.r = Math.max(0.08, p.r + p.vr * dt);
+
+      const x = p.r * Math.cos(p.theta);
+      const z = 1.5 + p.r * Math.sin(p.theta);
+      const y = p.y + Math.sin(p.theta * 3 + p.phase) * 0.14 * (1 + bass);
+
+      const invZ = 1 / z;
+      const px = cx + x * invZ * scale;
+      const py = cy + y * invZ * scale;
+
+      const depthFrac = Math.max(0, Math.min(1, 1 - (z - 0.5) / 2.2));
+      const ci = Math.min(nL - 1, Math.floor((depthFrac * 0.8 + energy * 0.2) * (nL - 1)));
+      const rgb = (depthFrac > 0.8 || audio.beatFlash > 0.65) ? chrome.accentRgb : lut.rgbs[ci];
+      const pSize = Math.max(1.2 * dpr, p.size * invZ * (1.2 + 0.8 * audio.beatFlash) * dpr);
+
+      ctx.fillStyle = rgbCss(rgb, 0.35 + 0.65 * depthFrac);
+      ctx.beginPath();
+      ctx.arc(px, py, pSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const coreR = Math.max(4, Math.min(cx, cy) * (0.05 + 0.12 * bass + 0.15 * audio.beatFlash));
+    const cGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+    cGrad.addColorStop(0, rgbCss(chrome.accentRgb, 0.9));
+    cGrad.addColorStop(0.5, rgbCss(lut.rgbs[Math.floor(nL * 0.5)], 0.5));
+    cGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = cGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  _renderOrb(audio, dt, lut, chrome) {
+    const ctx = this.ctx;
+    const { w, h, dpr } = this;
+    const cx = w * 0.5, cy = h * 0.5;
+    const bass = meanSlice(audio.smooth, 0, Math.max(1, Math.floor(audio.smooth.length / 6)));
+    const energy = meanSlice(audio.smooth, 0, audio.smooth.length);
+    const nSmooth = audio.smooth.length;
+
+    this.orbRotX = (this.orbRotX + dt * (0.32 + 0.45 * bass)) % (Math.PI * 2);
+    this.orbRotY = (this.orbRotY + dt * (0.42 + 0.55 * audio.beatFlash)) % (Math.PI * 2);
+
+    const baseR = Math.min(cx, cy) * 0.44 * (0.85 + 0.28 * bass + 0.22 * audio.beatFlash);
+    const lats = 14;
+    const lons = 28;
+    const cosX = Math.cos(this.orbRotX), sinX = Math.sin(this.orbRotX);
+    const cosY = Math.cos(this.orbRotY), sinY = Math.sin(this.orbRotY);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    const pts = [];
+    for (let i = 0; i <= lats; i++) {
+      const theta = (i / lats) * Math.PI;
+      const sinT = Math.sin(theta), cosT = Math.cos(theta);
+      const row = [];
+      for (let j = 0; j < lons; j++) {
+        const phi = (j / lons) * Math.PI * 2;
+        const sinP = Math.sin(phi), cosP = Math.cos(phi);
+
+        const bIdx = Math.floor(((i * lons + j) / (lats * lons)) * (nSmooth - 1));
+        const freqMod = 1.0 + 0.38 * (audio.smooth[bIdx] || 0) * Math.sin(theta * 3 + this.orbRotX);
+        const r = baseR * freqMod;
+
+        let mx = r * sinT * cosP;
+        let my = r * cosT;
+        let mz = r * sinT * sinP;
+
+        const y1 = my * cosX - mz * sinX;
+        const z1 = my * sinX + mz * cosX;
+        const x2 = mx * cosY + z1 * sinY;
+        const z2 = -mx * sinY + z1 * cosY;
+
+        const camZ = baseR * 2.5 + z2;
+        const s = (baseR * 2.5) / Math.max(10, camZ);
+        const px = cx + x2 * s;
+        const py = cy + y1 * s;
+        row.push({ px, py, z: z2, s });
+      }
+      pts.push(row);
+    }
+
+    const nL = lut.rgbs.length;
+
+    // Latitudinal contour rings
+    for (let i = 1; i < lats; i++) {
+      const row = pts[i];
+      const avgZ = row.reduce((acc, p) => acc + p.z, 0) / lons;
+      const depthFrac = Math.max(0, Math.min(1, (avgZ + baseR) / (baseR * 2)));
+      const ci = Math.min(nL - 1, Math.floor(depthFrac * (nL - 1)));
+      const rgb = depthFrac > 0.75 ? chrome.accentRgb : lut.rgbs[ci];
+
+      ctx.strokeStyle = rgbCss(rgb, 0.25 + 0.75 * depthFrac);
+      ctx.lineWidth = (1.2 + 2.0 * depthFrac) * dpr;
+      ctx.beginPath();
+      for (let j = 0; j <= lons; j++) {
+        const p = row[j % lons];
+        if (j === 0) ctx.moveTo(p.px, p.py); else ctx.lineTo(p.px, p.py);
+      }
+      ctx.stroke();
+    }
+
+    // Longitudinal meridian ribs
+    for (let j = 0; j < lons; j += 2) {
+      ctx.strokeStyle = rgbCss(chrome.gridRgb, 0.35);
+      ctx.lineWidth = 1.1 * dpr;
+      ctx.beginPath();
+      for (let i = 0; i <= lats; i++) {
+        const p = pts[i][j];
+        if (i === 0) ctx.moveTo(p.px, p.py); else ctx.lineTo(p.px, p.py);
+      }
+      ctx.stroke();
+    }
+
+    // Plasma core glow
+    const coreR = Math.max(4, baseR * (0.3 + 0.25 * energy + 0.35 * audio.beatFlash));
+    const orbGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+    orbGrad.addColorStop(0, rgbCss(chrome.accentRgb, 0.95));
+    orbGrad.addColorStop(0.5, rgbCss(lut.rgbs[Math.floor(nL * 0.7)], 0.55));
+    orbGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = orbGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  _applyKaleidoscope(w, h) {
+    const ctx = this.ctx;
+    const cx = w * 0.5, cy = h * 0.5;
+    const slices = 8;
+    const angle = (Math.PI * 2) / slices;
+
+    this.fxCtx.drawImage(this.canvas, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const radius = Math.hypot(cx, cy);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (let i = 0; i < slices; i++) {
+      ctx.save();
+      ctx.rotate(i * angle);
+      if (i % 2 === 1) {
+        ctx.scale(1, -1);
+      }
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, radius, -angle * 0.5, angle * 0.5);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(this.fxCanvas, -cx, -cy);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  _applyBloom(w, h, beatFlash, chrome) {
+    const ctx = this.ctx;
+    const bw = this.bloomCanvas.width;
+    const bh = this.bloomCanvas.height;
+
+    this.bloomCtx.drawImage(this.canvas, 0, 0, bw, bh);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.filter = "blur(8px) brightness(1.35)";
+    ctx.globalAlpha = 0.35 + 0.65 * beatFlash;
+    ctx.drawImage(this.bloomCanvas, 0, 0, w, h);
+    ctx.restore();
+  }
+
+  _applyRgbShift(w, h, beatFlash, dpr) {
+    const ctx = this.ctx;
+    const shift = Math.round((2.5 + 9.0 * beatFlash) * dpr);
+    this.fxCtx.drawImage(this.canvas, 0, 0);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.45 + 0.5 * beatFlash;
+    ctx.drawImage(this.fxCanvas, shift, 0);
+    ctx.restore();
+  }
+
+  _applyCrt(w, h, dpr) {
+    const ctx = this.ctx;
+    ctx.save();
+
+    // Scanlines
+    ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
+    const step = Math.max(2, Math.floor(3 * dpr));
+    for (let y = 0; y < h; y += step) {
+      ctx.fillRect(0, y, w, 1 * dpr);
+    }
+
+    // Vignette
+    const maxR = Math.hypot(w * 0.5, h * 0.5);
+    const vig = ctx.createRadialGradient(w * 0.5, h * 0.5, Math.min(w, h) * 0.38, w * 0.5, h * 0.5, maxR);
+    vig.addColorStop(0, "rgba(0, 0, 0, 0)");
+    vig.addColorStop(1, "rgba(0, 0, 0, 0.52)");
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, w, h);
+
     ctx.restore();
   }
 

@@ -16,12 +16,16 @@
       Real-time speaker &amp; tab visualizer with perceptual OKLab color harmony,
       cymatics physics, radial auras, and HiDPI rendering.
     </p>
-    <div class="actions">
+    <div class="actions" id="welcome-actions">
       <button id="btn-welcome-speaker" class="primary">Capture Speaker / Tab</button>
-      <button id="btn-welcome-mic">Mic / Loopback</button>
+      <button id="btn-welcome-mic">Mic / Input</button>
+      <label class="file-btn welcome-file-btn" id="lbl-welcome-file" title="Pick an audio file (.mp3, .wav, .m4a, .flac) to play">
+        Audio File
+        <input id="welcome-file-input" type="file" accept="audio/*" />
+      </label>
       <button id="btn-welcome-demo">126 BPM Demo</button>
     </div>
-    <p class="hint">
+    <p id="welcome-hint" class="hint">
       Pick your music tab or screen and enable <strong>Share audio</strong>, or drop any audio file onto the canvas.
     </p>
     <div class="welcome-footer">
@@ -84,9 +88,17 @@
           <button id="btn-peaks" class="active">Peaks</button>
           <button id="btn-grid" class="active">Grid</button>
         </div>
+        <div class="popover-row-label">vizz.fm Effects</div>
+        <div class="popover-toggles fx-toggles">
+          <button id="btn-fx-bloom" class="active" title="Glow / Bloom (B)">Bloom</button>
+          <button id="btn-fx-trails" title="Feedback Trails / Motion Blur (T)">Trails</button>
+          <button id="btn-fx-kaleido" title="Kaleidoscope Mirror (K)">Kaleido</button>
+          <button id="btn-fx-rgb" title="RGB Shift / Chromatic Aberration (R)">RGB Shift</button>
+          <button id="btn-fx-crt" title="CRT Scanlines &amp; Vignette (X)">CRT</button>
+        </div>
         <div class="popover-meta">
           <span id="stat-fps" class="mono">60 fps</span>
-          <span>Space: Mode · C: Theme · H: HUD · F: Fullscreen</span>
+          <span>Space: Mode · C: Theme · B/T/K/R/X: FX · F: Fullscreen</span>
         </div>
       </div>
 
